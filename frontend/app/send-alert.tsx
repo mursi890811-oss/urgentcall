@@ -23,19 +23,20 @@ export default function SendAlert() {
 
   async function invite(contact: any) {
     setErr(null);
+    // Immediate feedback so the user knows the tap registered
+    setInvitedName(`Opening share for ${contact.name}…`);
     const msg = `Hey ${contact.name}, I'm using UrgentCall to reach trusted people in emergencies — even when their phone is on silent. Install it so I can reach you when it matters: https://urgentcall.app`;
 
     try {
-      const result = await Share.share({
+      await Share.share({
         message: msg,
         title: "Invite to UrgentCall",
       });
-      if (result.action !== Share.dismissedAction) {
-        setInvitedName(`Invite sent to ${contact.name}`);
-        setTimeout(() => setInvitedName(null), 2500);
-      }
+      setInvitedName(`Invite ready for ${contact.name}`);
+      setTimeout(() => setInvitedName(null), 2500);
     } catch (e: any) {
-      setErr(e?.message || "Couldn't open share sheet");
+      setInvitedName(null);
+      setErr(`Share failed: ${e?.message || "unknown error"}`);
     }
   }
 
@@ -108,10 +109,15 @@ export default function SendAlert() {
                   {isActive ? (
                     <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
                   ) : (
-                    <View style={styles.invitedTag}>
+                    <TouchableOpacity
+                      style={styles.invitedTag}
+                      onPress={() => invite(c)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      testID="invite-contact-badge"
+                    >
                       <Ionicons name="paper-plane" size={12} color={theme.warn} />
                       <Text style={styles.invitedTagText}>Send Invite</Text>
-                    </View>
+                    </TouchableOpacity>
                   )}
                 </TouchableOpacity>
               );
