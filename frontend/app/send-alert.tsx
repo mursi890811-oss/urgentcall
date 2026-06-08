@@ -22,22 +22,25 @@ export default function SendAlert() {
 
   async function invite(contact: any) {
     const msg = `Hey ${contact.name}, I'm using UrgentCall to reach trusted people in emergencies — even when their phone is on silent. Install it so I can reach you when it matters: https://urgentcall.app`;
-    const phone = (contact.phone || "").replace(/\s+/g, "");
-    const url = Platform.OS === "ios" ? `sms:${phone}&body=${encodeURIComponent(msg)}` : `sms:${phone}?body=${encodeURIComponent(msg)}`;
+    const phone = (contact.phone || "").replace(/[^0-9+]/g, "");
+    const url = Platform.OS === "ios"
+      ? `sms:${phone}&body=${encodeURIComponent(msg)}`
+      : `sms:${phone}?body=${encodeURIComponent(msg)}`;
     try {
-      const can = await Linking.canOpenURL(url);
-      if (can) {
-        await Linking.openURL(url);
-        setInvitedName(contact.name);
-        setTimeout(() => setInvitedName(null), 2500);
-      } else {
-        // Web / unsupported — just show confirmation toast
-        setInvitedName(contact.name);
-        setTimeout(() => setInvitedName(null), 2500);
-      }
-    } catch {
+      // Skip canOpenURL — fails on Android 11+ without explicit queries.
+      // openURL throws if no handler, which we catch below.
+      await Linking.openURL(url);
       setInvitedName(contact.name);
       setTimeout(() => setInvitedName(null), 2500);
+    } catch (e) {
+      // Last-resort fallback: open with no body / no number
+      try {
+        await Linking.openURL(`sms:${phone}`);
+        setInvitedName(contact.name);
+        setTimeout(() => setInvitedName(null), 2500);
+      } catch {
+        setErr("Couldn't open SMS app. Please send the invite manually.");
+      }
     }
   }
 
