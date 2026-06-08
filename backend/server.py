@@ -333,6 +333,30 @@ async def update_settings(body: UpdateSettingsReq, user: dict = Depends(get_curr
     return user_public(u)
 
 
+@api.get("/users/me/blocked")
+async def list_blocked(user: dict = Depends(get_current_user)):
+    blocked_ids = user.get("blocked") or []
+    if not blocked_ids:
+        return []
+    users = await db.users.find(
+        {"user_id": {"$in": blocked_ids}},
+        {"_id": 0, "password_hash": 0},
+    ).to_list(200)
+    return [{"user_id": u["user_id"], "full_name": u.get("full_name", ""), "email": u.get("email", "")} for u in users]
+
+
+@api.post("/users/me/blocked/{target_id}")
+async def block_user(target_id: str, user: dict = Depends(get_current_user)):
+    await db.users.update_one({"user_id": user["user_id"]}, {"$addToSet": {"blocked": target_id}})
+    return {"ok": True}
+
+
+@api.delete("/users/me/blocked/{target_id}")
+async def unblock_user(target_id: str, user: dict = Depends(get_current_user)):
+    await db.users.update_one({"user_id": user["user_id"]}, {"$pull": {"blocked": target_id}})
+    return {"ok": True}
+
+
 # ============ CONTACTS ============
 @api.get("/contacts")
 async def list_contacts(user: dict = Depends(get_current_user)):
