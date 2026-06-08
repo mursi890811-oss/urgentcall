@@ -1,0 +1,171 @@
+{
+  "theme": "Dark",
+  "archetype": "Archetype 4 (Swiss & High-Contrast) / Archetype 2 (Performance Pro)",
+  "design_philosophy": "A serious, command-center aesthetic optimized for urgent situations. Pure black backgrounds combined with an electric red accent color to establish trust, reliability, and immediate action capability. High contrast ensures readability in all lighting conditions.",
+  "colors": {
+    "background": "#000000",
+    "surface": "#121212",
+    "surface_elevated": "#1E1E1E",
+    "primary": "#FF3B30",
+    "primary_active": "#D70015",
+    "success": "#34C759",
+    "text_primary": "#FFFFFF",
+    "text_secondary": "#8E8E93",
+    "text_tertiary": "#636366",
+    "border": "#2C2C2E",
+    "overlay": "rgba(0, 0, 0, 0.7)"
+  },
+  "typography": {
+    "font_families": {
+      "heading": "Manrope",
+      "body": "IBM Plex Sans"
+    },
+    "sizes": {
+      "h1": { "fontSize": 32, "fontWeight": "800", "lineHeight": 40, "letterSpacing": 0.5 },
+      "h2": { "fontSize": 24, "fontWeight": "700", "lineHeight": 32, "letterSpacing": 0.35 },
+      "h3": { "fontSize": 20, "fontWeight": "600", "lineHeight": 28, "letterSpacing": 0.35 },
+      "body_large": { "fontSize": 18, "fontWeight": "400", "lineHeight": 26 },
+      "body": { "fontSize": 16, "fontWeight": "400", "lineHeight": 24 },
+      "caption": { "fontSize": 13, "fontWeight": "500", "lineHeight": 18, "letterSpacing": 0.2 },
+      "button": { "fontSize": 16, "fontWeight": "700", "letterSpacing": 0.5 }
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "xxl": 48,
+    "xxxl": 64
+  },
+  "components": {
+    "buttons": {
+      "primary": {
+        "backgroundColor": "#FF3B30",
+        "borderRadius": 12,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "alignItems": "center",
+        "justifyContent": "center"
+      },
+      "secondary": {
+        "backgroundColor": "#1E1E1E",
+        "borderRadius": 12,
+        "paddingVertical": 16,
+        "paddingHorizontal": 24,
+        "borderWidth": 1,
+        "borderColor": "#2C2C2E"
+      },
+      "sos_circular": {
+        "width": 180,
+        "height": 180,
+        "borderRadius": 90,
+        "backgroundColor": "#FF3B30",
+        "justifyContent": "center",
+        "alignItems": "center",
+        "elevation": 10,
+        "shadowColor": "#FF3B30",
+        "shadowOffset": { "width": 0, "height": 8 },
+        "shadowOpacity": 0.5,
+        "shadowRadius": 16
+      }
+    },
+    "cards": {
+      "default": {
+        "backgroundColor": "#121212",
+        "borderRadius": 16,
+        "padding": 16,
+        "borderWidth": 1,
+        "borderColor": "#2C2C2E"
+      }
+    },
+    "inputs": {
+      "default": {
+        "backgroundColor": "#1E1E1E",
+        "borderRadius": 12,
+        "padding": 16,
+        "color": "#FFFFFF",
+        "fontSize": 16,
+        "borderWidth": 1,
+        "borderColor": "#2C2C2E"
+      },
+      "focused": {
+        "borderColor": "#FF3B30"
+      }
+    },
+    "bottom_nav": {
+      "backgroundColor": "#0A0A0A",
+      "borderTopWidth": 1,
+      "borderTopColor": "#2C2C2E",
+      "paddingBottom": "safe-area-inset-bottom",
+      "height": 80,
+      "activeTintColor": "#FF3B30",
+      "inactiveTintColor": "#8E8E93"
+    }
+  },
+  "screens": {
+    "Splash": {
+      "layout": "Center aligned content. Pure black background #000000.",
+      "visuals": "Large Red Bell or Lightning logo in center. App name 'UrgentCall' in bold white text (h1) below logo. Tagline 'Reach anyone, even on silent' in text_secondary below."
+    },
+    "LoginRegister": {
+      "layout": "SafeAreaView wrapper. Top logo minimal. Tabs for Sign In / Create Account.",
+      "visuals": "Inputs with #1E1E1E bg and #2C2C2E borders. Primary red button for auth. Dark gray secondary button with Google logo for OAuth. Dark theme minimalist.",
+      "testing": "data-testid='login-email-input', data-testid='login-password-input', data-testid='login-submit-button'"
+    },
+    "Home": {
+      "layout": "SafeAreaView wrapper. Header with greeting and Avatar. Center large SOS button. Bottom horizontal scroll list.",
+      "visuals": "Greeting 'Hey, [Name] 👋' (h2). Massive 180x180 Red circular 'Send Alert' button in center screen with glowing drop shadow. Horizontal list of trusted contacts in cards below.",
+      "testing": "data-testid='home-send-alert-button', data-testid='home-trusted-contact-card'"
+    },
+    "SendAlertConfirmation": {
+      "layout": "Modal or Stack push. Dark overlay if modal, or pure black if full screen.",
+      "visuals": "Contact avatar centered large. 'Send emergency alert to [Name]?' (h2). Subtitle text in secondary gray. Big red 'Send Alert Now' button, dark gray 'Cancel' button below it.",
+      "testing": "data-testid='confirm-send-alert-button', data-testid='cancel-alert-button'"
+    },
+    "IncomingAlert": {
+      "layout": "Full screen takeover, ignores safe area at top to maximize visibility.",
+      "visuals": "Background animates pulsing #D70015 to #FF3B30. Sender avatar massive. '⚡ [Name] needs you urgently!' in pure white h1. Large green 'Got it / I am OK' button. Smaller grey text 'Dismiss' at bottom.",
+      "animation": "Continuous pulse animation on background. Haptic feedback loops.",
+      "testing": "data-testid='incoming-alert-acknowledge-button'"
+    },
+    "Contacts": {
+      "layout": "Standard list view with Sticky Header.",
+      "visuals": "Title 'Trusted Contacts'. Search bar sticky. 'Add from Phonebook' & 'Add Manually' as side-by-side secondary buttons. List items: Avatar, Name, Phone, Green dot if active. Swipeable rows to delete.",
+      "testing": "data-testid='contacts-search-input', data-testid='add-contact-button', data-testid='contact-row'"
+    },
+    "History": {
+      "layout": "Tabs at top (All / Sent / Received / Missed). FlatList below.",
+      "visuals": "List items showing Sender/Receiver name, time, status badge (Red for missed, Green for OK, Gray for sent), direction arrow.",
+      "testing": "data-testid='history-filter-tabs', data-testid='history-list-item'"
+    },
+    "SettingsProfile": {
+      "layout": "Grouped list style using ScrollView.",
+      "visuals": "Avatar + name + phone at top. Settings grouped in cards (Notifications, Privacy, Account). Toggles for silent override, vibration, sound using green/red track colors.",
+      "testing": "data-testid='settings-notification-toggle', data-testid='settings-logout-button'"
+    }
+  },
+  "motion_and_interactions": {
+    "button_press": "Opacity reduction to 0.7 on TouchableOpacity, or subtle scale down (0.95) using React Native Reanimated.",
+    "alert_pulse": "Looping scale and opacity animation using Reanimated on the background of the Incoming Alert screen.",
+    "navigation": "Standard iOS/Android slide or fade stack transitions."
+  },
+  "media": {
+    "image_urls": {
+      "alert_abstract_bg": "https://images.unsplash.com/photo-1515444029923-60569d238ec5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDN8MHwxfHNlYXJjaHwyfHxyZWQlMjBlbWVyZ2VuY3klMjBsaWdodCUyMGFic3RyYWN0fGVufDB8fHx8MTc4MDkwOTA1Mnww&ixlib=rb-4.1.0&q=85",
+      "avatar_1": "https://images.pexels.com/photos/29563571/pexels-photo-29563571.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "avatar_2": "https://images.pexels.com/photos/17191688/pexels-photo-17191688.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+    },
+    "icons_strategy": "Use @expo/vector-icons (Feather or Ionicons) for crisp, high-contrast monochrome icons. Red for critical icons, White/Gray for standard UI."
+  },
+  "instructions_to_main_agent": [
+    "This is an Expo React Native mobile app. Ensure you use .js files as instructed.",
+    "Use standard React Native StyleSheet or NativeWind/Tailwind depending on project configuration, relying heavily on the exact hex colors provided here.",
+    "Wrap main screen content in SafeAreaView to respect device notches and home indicators.",
+    "For forms (Login, Manual Contact Entry), wrap with KeyboardAvoidingView and ScrollView so inputs are not hidden by the keyboard.",
+    "ALL interactive elements (buttons, inputs, list items) MUST have a `data-testid` attribute using kebab-case role-based names.",
+    "The Incoming Alert screen must be highly visible—utilize the pulsing animation pattern described.",
+    "Do NOT use pure white (#FFFFFF) for backgrounds. Only use for text. App surface must be #000000 or #121212 to preserve the emergency night-mode aesthetic."
+  ]
+}
