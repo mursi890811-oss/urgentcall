@@ -7,10 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
     "userInterfaceStyle": "dark",
-    "androidStatusBar": {
-      "backgroundColor": "#000000",
-      "barStyle": "light-content"
-    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,

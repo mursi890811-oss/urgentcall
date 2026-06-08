@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Platform, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,7 +17,29 @@ export default function SendAlert() {
   const [selected, setSelected] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [invitedName, setInvitedName] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  async function invite(contact: any) {
+    const msg = `Hey ${contact.name}, I'm using UrgentCall to reach trusted people in emergencies — even when their phone is on silent. Install it so I can reach you when it matters: https://urgentcall.app`;
+    const phone = (contact.phone || "").replace(/\s+/g, "");
+    const url = Platform.OS === "ios" ? `sms:${phone}&body=${encodeURIComponent(msg)}` : `sms:${phone}?body=${encodeURIComponent(msg)}`;
+    try {
+      const can = await Linking.canOpenURL(url);
+      if (can) {
+        await Linking.openURL(url);
+        setInvitedName(contact.name);
+        setTimeout(() => setInvitedName(null), 2500);
+      } else {
+        // Web / unsupported — just show confirmation toast
+        setInvitedName(contact.name);
+        setTimeout(() => setInvitedName(null), 2500);
+      }
+    } catch {
+      setInvitedName(contact.name);
+      setTimeout(() => setInvitedName(null), 2500);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -76,10 +98,9 @@ export default function SendAlert() {
               return (
                 <TouchableOpacity
                   key={c.id}
-                  style={[styles.contactRow, !isActive && { opacity: 0.55 }]}
-                  onPress={() => isActive && setSelected(c)}
-                  disabled={!isActive}
-                  testID="select-contact"
+                  style={[styles.contactRow, !isActive && { borderColor: theme.warn }]}
+                  onPress={() => (isActive ? setSelected(c) : invite(c))}
+                  testID={isActive ? "select-contact" : "invite-contact"}
                 >
                   <View style={styles.contactAvatar}><Text style={styles.contactAvatarText}>{initials(c.name)}</Text></View>
                   <View style={{ marginLeft: 12, flex: 1 }}>
@@ -90,12 +111,19 @@ export default function SendAlert() {
                     <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
                   ) : (
                     <View style={styles.invitedTag}>
-                      <Text style={styles.invitedTagText}>Invite</Text>
+                      <Ionicons name="paper-plane" size={12} color={theme.warn} />
+                      <Text style={styles.invitedTagText}>Send Invite</Text>
                     </View>
                   )}
                 </TouchableOpacity>
               );
             })}
+          {invitedName && (
+            <View style={styles.toast} testID="invite-toast">
+              <Ionicons name="checkmark-circle" size={18} color={theme.success} />
+              <Text style={styles.toastText}>Invite ready for {invitedName}</Text>
+            </View>
+          )}
           </View>
         </ScrollView>
       ) : (
@@ -141,8 +169,10 @@ const styles = StyleSheet.create({
   contactAvatarText: { color: "#fff", fontWeight: "700" },
   contactName: { color: "#fff", fontWeight: "600" },
   contactPhone: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
-  invitedTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: theme.warn },
+  invitedTag: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: theme.warn, backgroundColor: "rgba(255,149,0,0.08)" },
   invitedTagText: { color: theme.warn, fontSize: 11, fontWeight: "700" },
+  toast: { position: "absolute", bottom: 32, left: 20, right: 20, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: theme.surfaceElevated, borderWidth: 1, borderColor: theme.success, borderRadius: 12, padding: 14 },
+  toastText: { color: "#fff", fontSize: 13, fontWeight: "600" },
   successWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   successCircle: { width: 110, height: 110, borderRadius: 55, backgroundColor: theme.success, alignItems: "center", justifyContent: "center", marginBottom: 24 },
   successTitle: { color: "#fff", fontSize: 26, fontWeight: "800" },
