@@ -22,40 +22,55 @@ export default function SendAlert() {
   const [err, setErr] = useState<string | null>(null);
 
   async function invite(contact: any) {
+    // Always give immediate feedback so the user knows the tap registered
+    setErr(null);
+    setInvitedName(`Opening SMS for ${contact.name}…`);
+
     const msg = `Hey ${contact.name}, I'm using UrgentCall to reach trusted people in emergencies — even when their phone is on silent. Install it so I can reach you when it matters: https://urgentcall.app`;
     const phone = (contact.phone || "").replace(/[^0-9+]/g, "");
 
     if (!phone) {
+      setInvitedName(null);
       setErr("This contact has no phone number to invite.");
       return;
     }
 
-    // Native (iOS/Android, including Expo Go): use expo-sms
+    // 1) Try expo-sms (native composer with body)
     if (Platform.OS !== "web") {
       try {
         const available = await SMS.isAvailableAsync();
         if (available) {
-          await SMS.sendSMSAsync([phone], msg);
-          setInvitedName(contact.name);
+          const result = await SMS.sendSMSAsync([phone], msg);
+          setInvitedName(`Invite ready for ${contact.name}`);
           setTimeout(() => setInvitedName(null), 2500);
           return;
         }
-      } catch (e) {
-        // fall through to Linking fallback
+      } catch (e: any) {
+        // fall through to Linking
       }
     }
 
-    // Fallback for web or if expo-sms unavailable
-    const url = Platform.OS === "ios"
-      ? `sms:${phone}&body=${encodeURIComponent(msg)}`
-      : `sms:${phone}?body=${encodeURIComponent(msg)}`;
+    // 2) Linking fallback (works on Android even when expo-sms reports unavailable)
     try {
+      const url = Platform.OS === "ios"
+        ? `sms:${phone}&body=${encodeURIComponent(msg)}`
+        : `sms:${phone}?body=${encodeURIComponent(msg)}`;
       await Linking.openURL(url);
-      setInvitedName(contact.name);
+      setInvitedName(`Invite ready for ${contact.name}`);
       setTimeout(() => setInvitedName(null), 2500);
-    } catch {
-      setErr("Couldn't open SMS app. Please send the invite manually.");
-    }
+      return;
+    } catch {}
+
+    // 3) Last resort: try plain sms: (no body)
+    try {
+      await Linking.openURL(`sms:${phone}`);
+      setInvitedName(`Opened SMS for ${contact.name}`);
+      setTimeout(() => setInvitedName(null), 2500);
+      return;
+    } catch {}
+
+    setInvitedName(null);
+    setErr("Couldn't open SMS app. Make sure Messages is installed.");
   }
 
   useEffect(() => {
@@ -138,7 +153,13 @@ export default function SendAlert() {
           {invitedName && (
             <View style={styles.toast} testID="invite-toast">
               <Ionicons name="checkmark-circle" size={18} color={theme.success} />
-              <Text style={styles.toastText}>Invite ready for {invitedName}</Text>
+              <Text style={styles.toastText}>{invitedName}</Text>
+            </View>
+          )}
+          {err && (
+            <View style={[styles.toast, { borderColor: theme.primary, bottom: 90 }]} testID="invite-err">
+              <Ionicons name="alert-circle" size={18} color={theme.primary} />
+              <Text style={styles.toastText}>{err}</Text>
             </View>
           )}
           </View>
