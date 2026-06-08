@@ -17,11 +17,13 @@
       }
     },
     "android": {
+      "package": "com.urgentcall.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000"
       },
       "edgeToEdgeEnabled": true,
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "READ_CONTACTS",
         "VIBRATE",

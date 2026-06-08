@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "249505753464",
+    "project_id": "urgentcall-f5512",
+    "storage_bucket": "urgentcall-f5512.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:249505753464:android:f1058c26f77b357ec3808d",
+        "android_client_info": {
+          "package_name": "com.urgentcall.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDG5cXdZIYdV56V1elw0vGi21gKonCDzWc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
