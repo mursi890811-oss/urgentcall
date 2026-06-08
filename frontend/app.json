@@ -7,6 +7,10 @@
     "icon": "./assets/images/icon.png",
     "scheme": "frontend",
     "userInterfaceStyle": "dark",
+    "androidStatusBar": {
+      "backgroundColor": "#000000",
+      "barStyle": "light-content"
+    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -20,7 +24,7 @@
       "package": "com.urgentcall.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
