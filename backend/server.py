@@ -361,6 +361,35 @@ async def unblock_user(target_id: str, user: dict = Depends(get_current_user)):
 @api.get("/contacts")
 async def list_contacts(user: dict = Depends(get_current_user)):
     items = await db.contacts.find({"owner_user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Lazily re-resolve invited contacts in case the person has since registered
+    for c in items:
+        if c.get("contact_user_id"):
+            continue
+        matched = None
+        if c.get("email"):
+            matched = await db.users.find_one({"email": c["email"].lower()}, {"_id": 0, "password_hash": 0})
+        if not matched and c.get("phone"):
+            # Try exact match first, then digits-only match
+            phone_digits = "".join(ch for ch in c["phone"] if ch.isdigit())
+            matched = await db.users.find_one({"phone": c["phone"]}, {"_id": 0, "password_hash": 0})
+            if not matched and phone_digits:
+                # last-7-digits suffix match to handle country code differences
+                matched = await db.users.find_one(
+                    {"phone": {"$regex": phone_digits[-7:] + "$"}},
+                    {"_id": 0, "password_hash": 0},
+                )
+        if matched:
+            c["contact_user_id"] = matched["user_id"]
+            c["status"] = "active"
+            c["avatar_url"] = matched.get("avatar_url")
+            await db.contacts.update_one(
+                {"id": c["id"]},
+                {"$set": {
+                    "contact_user_id": matched["user_id"],
+                    "status": "active",
+                    "avatar_url": matched.get("avatar_url"),
+                }},
+            )
     return items
 
 
