@@ -13,7 +13,9 @@
       "infoPlist": {
         "NSContactsUsageDescription": "Add trusted people who can reach you in emergencies",
         "NSMicrophoneUsageDescription": "Play urgent alert sound over silent mode",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -27,8 +29,18 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "scheme": "sms" }, { "scheme": "smsto" }],
-          "category": ["DEFAULT", "BROWSABLE"]
+          "data": [
+            {
+              "scheme": "sms"
+            },
+            {
+              "scheme": "smsto"
+            }
+          ],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ]
         }
       ],
       "permissions": [
@@ -55,7 +67,8 @@
           "backgroundColor": "#000"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

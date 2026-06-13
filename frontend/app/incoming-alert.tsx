@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Animated, Vibration, Platform
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useAudioPlayer } from "expo-audio";
 import { api } from "@/src/api/client";
 import { theme } from "@/src/theme";
 
@@ -10,12 +11,27 @@ function initials(name: string) {
   return (name || "").split(" ").map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 }
 
+const ALARM_SOUND = require("../assets/images/icon.png"); // placeholder — replace with real .mp3 asset when added
+
 export default function IncomingAlert() {
   const params = useLocalSearchParams<{ alertId?: string }>();
   const router = useRouter();
   const [alert, setAlertData] = useState<any | null>(null);
   const pulse = useRef(new Animated.Value(0)).current;
   const timer = useRef<any>(null);
+  const hapticInterval = useRef<any>(null);
+
+  // Alarm: use a remote/looped beep; fallback to vibration only if audio fails
+  const player = useAudioPlayer(
+    { uri: "https://cdn.pixabay.com/audio/2022/03/15/audio_1d4f4d77b6.mp3" }
+  );
+
+  function stopAll() {
+    try { Vibration.cancel(); } catch {}
+    if (hapticInterval.current) { clearInterval(hapticInterval.current); hapticInterval.current = null; }
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    try { player.pause(); } catch {}
+  }
 
   useEffect(() => {
     (async () => {
@@ -38,24 +54,21 @@ export default function IncomingAlert() {
 
     if (Platform.OS !== "web") {
       Vibration.vibrate([0, 500, 300, 500, 300, 500], true);
-      const hapticInterval = setInterval(() => {
+      hapticInterval.current = setInterval(() => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }, 1500);
+      try { player.loop = true; player.play(); } catch {}
 
       timer.current = setTimeout(() => respond("dismiss", true), 60_000);
-      return () => {
-        Vibration.cancel();
-        clearInterval(hapticInterval);
-        if (timer.current) clearTimeout(timer.current);
-      };
+      return () => { stopAll(); };
     }
-    return () => { if (timer.current) clearTimeout(timer.current); };
+    return () => { stopAll(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function respond(action: "acknowledge" | "dismiss", auto = false) {
     if (!alert) return;
-    if (Platform.OS !== "web") Vibration.cancel();
+    stopAll();
     try {
       await api.post(`/api/alerts/${alert.id}/respond`, { action: auto ? "dismiss" : action });
     } catch {}
