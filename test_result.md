@@ -218,3 +218,8 @@ agent_communication:
       Please test BACKEND (alerts CRUD + new GET endpoint + sort) AND FRONTEND (send-alert custom message flow + ack polling UI). 
       Test creds: alice@test.com / password123 (sender), bob@test.com / password123 (receiver). 
       NOTE: bob must add alice as trusted contact (or alice's settings.who_can_add must be 'everyone') for the alert to go through. Default is 'everyone'.
+  - agent: "testing"
+    message: |
+      Session 1 testing complete. 31/31 backend tests passed (14 new in test_session1_features.py + 17 existing).
+      Frontend (390x844 viewport) verified: custom message input + 4 quick chips, sender-side polling flips UI to 'They\'re OK!' within 3s of Bob's ack, history sorted newest-first with message snippets, all filter chips work, ack/dismiss propagation works end-to-end.
+      No bugs found. Only non-blocking RN-web warnings. retest_needed=false.
