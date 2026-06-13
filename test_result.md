@@ -101,3 +101,120 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Mobile app "UrgentCall" - send emergency alerts that bypass silent mode to trusted contacts.
+  Session 1 wrap-up: custom message field, history newest-first sort, sender-side acknowledgment polling, expo-audio alarm.
+
+backend:
+  - task: "Custom message in POST /api/alerts"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "AlertSendReq already had `message: Optional[str]`. Verified alert document uses body.message when provided, falls back to default."
+
+  - task: "GET /api/alerts sorted newest-first"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Fixed JS-style `const` syntax error and added .sort([('created_at', -1)]) to alert listing."
+
+  - task: "GET /api/alerts/{alert_id} for sender polling"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New endpoint returns specific alert if user is sender OR receiver. Returns 404 otherwise."
+
+frontend:
+  - task: "Custom message TextInput + quick chips on send-alert.tsx"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/send-alert.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Confirm screen now has TextInput + 4 quick-message chips. Custom message is passed in POST /api/alerts."
+
+  - task: "Sender-side acknowledgment polling on send-alert.tsx"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/send-alert.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "After send, screen polls GET /api/alerts/{id} every 3s and updates UI to show 'They're OK!' on ack."
+
+  - task: "Custom message displayed on incoming-alert.tsx"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/incoming-alert.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Alert message now displayed in a bubble below the sender name."
+
+  - task: "expo-audio alarm on incoming alert"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/app/incoming-alert.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "useAudioPlayer loops a remote alarm sound when alert mounts; stopped on response. Web preview may not play remote audio - verify on mobile/device build."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 3
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Custom message in POST /api/alerts"
+    - "GET /api/alerts sorted newest-first"
+    - "GET /api/alerts/{alert_id} for sender polling"
+    - "Custom message TextInput + quick chips on send-alert.tsx"
+    - "Sender-side acknowledgment polling on send-alert.tsx"
+    - "Custom message displayed on incoming-alert.tsx"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: |
+      Session 1 wrap-up implemented. Fixed broken state (JSX in send-alert.tsx + JS-style const in server.py).
+      Added: custom message field, quick-message chips, sender-side ack polling UI, new GET alert-by-id endpoint, history sort newest-first, custom message on incoming alert.
+      Please test BACKEND (alerts CRUD + new GET endpoint + sort) AND FRONTEND (send-alert custom message flow + ack polling UI). 
+      Test creds: alice@test.com / password123 (sender), bob@test.com / password123 (receiver). 
+      NOTE: bob must add alice as trusted contact (or alice's settings.who_can_add must be 'everyone') for the alert to go through. Default is 'everyone'.

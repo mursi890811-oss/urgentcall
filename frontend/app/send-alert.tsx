@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Platform, Linking, Share } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Share, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as SMS from "expo-sms";
 import { api } from "@/src/api/client";
 import { theme } from "@/src/theme";
 
@@ -20,6 +19,11 @@ export default function SendAlert() {
   const [sent, setSent] = useState(false);
   const [invitedName, setInvitedName] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [customMsg, setCustomMsg] = useState("");
+  const [sentAlertId, setSentAlertId] = useState<string | null>(null);
+  const [alertStatus, setAlertStatus] = useState<string>("sent");
+
+  const QUICK_MSGS = ["Call me back", "Where are you?", "I need you now", "Emergency!"];
 
   async function invite(contact: any) {
     setErr(null);
@@ -57,20 +61,58 @@ export default function SendAlert() {
     if (!selected) return;
     setLoading(true); setErr(null);
     try {
-      await api.post("/api/alerts", { receiver_user_id: selected.contact_user_id });
+      const created: any = await api.post("/api/alerts", { receiver_user_id: selected.contact_user_id, message: customMsg.trim() || undefined });
+      setSentAlertId(created?.id || null);
+      setAlertStatus(created?.status || "sent");
       setSent(true);
-      setTimeout(() => router.back(), 1600);
     } catch (e: any) { setErr(e.message || "Failed to send"); }
     finally { setLoading(false); }
   }
 
+  // Sender-side polling for acknowledgment
+  useEffect(() => {
+    if (!sent || !sentAlertId) return;
+    if (alertStatus === "acknowledged" || alertStatus === "dismissed") return;
+    const t = setInterval(async () => {
+      try {
+        const a: any = await api.get(`/api/alerts/${sentAlertId}`);
+        if (a?.status && a.status !== alertStatus) setAlertStatus(a.status);
+        if (a?.status === "acknowledged" || a?.status === "dismissed") {
+          clearInterval(t);
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(t);
+  }, [sent, sentAlertId, alertStatus]);
+
   if (sent) {
+    const ack = alertStatus === "acknowledged";
+    const dismissed = alertStatus === "dismissed";
     return (
       <SafeAreaView style={styles.safe} testID="alert-sent-screen">
         <View style={styles.successWrap}>
-          <View style={styles.successCircle}><Ionicons name="checkmark" size={56} color="#fff" /></View>
-          <Text style={styles.successTitle}>Alert Sent!</Text>
-          <Text style={styles.successSub}>{selected?.name} will be notified immediately</Text>
+          <View style={[styles.successCircle, ack && { backgroundColor: theme.success }, dismissed && { backgroundColor: theme.warn }]}>
+            <Ionicons name={ack ? "checkmark-done" : dismissed ? "close" : "paper-plane"} size={56} color="#fff" />
+          </View>
+          <Text style={styles.successTitle}>
+            {ack ? "They're OK!" : dismissed ? "Alert dismissed" : "Alert Sent!"}
+          </Text>
+          <Text style={styles.successSub}>
+            {ack
+              ? `${selected?.name} responded: I'm OK`
+              : dismissed
+              ? `${selected?.name} dismissed the alert`
+              : `${selected?.name} will be notified immediately`}
+          </Text>
+          {!ack && !dismissed && (
+            <View style={styles.waitRow} testID="waiting-response">
+              <ActivityIndicator color={theme.primary} />
+              <Text style={styles.waitText}>Waiting for response…</Text>
+            </View>
+          )}
+          <TouchableOpacity style={styles.doneBtn} onPress={() => router.back()} testID="done-button">
+            <Text style={styles.doneBtnText}>{ack || dismissed ? "Done" : "Close"}</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -137,10 +179,27 @@ export default function SendAlert() {
           </View>
         </ScrollView>
       ) : (
-        <View style={styles.confirmWrap}>
+        <ScrollView contentContainerStyle={styles.confirmWrap} keyboardShouldPersistTaps="handled">
           <View style={styles.bigAvatar}><Text style={styles.bigAvatarText}>{initials(selected.name)}</Text></View>
           <Text style={styles.heading}>Send emergency alert to {selected.name}?</Text>
           <Text style={styles.sub}>Their phone will ring even if on silent</Text>
+
+          <TextInput
+            value={customMsg}
+            onChangeText={setCustomMsg}
+            placeholder="Add a message (optional)"
+            placeholderTextColor={theme.textSecondary}
+            style={styles.msgInput}
+            maxLength={140}
+            testID="custom-message-input"
+          />
+          <View style={styles.chipRow}>
+            {QUICK_MSGS.map((m) => (
+              <TouchableOpacity key={m} style={styles.chip} onPress={() => setCustomMsg(m)} testID={`quick-msg-${m}`}>
+                <Text style={styles.chipText}>{m}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           {err && <Text style={styles.err}>{err}</Text>}
 
@@ -155,7 +214,7 @@ export default function SendAlert() {
           <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()} testID="cancel-alert-button">
             <Text style={styles.cancelBtnText}>Cancel</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -166,7 +225,7 @@ const styles = StyleSheet.create({
   topBar: { padding: 20, flexDirection: "row", justifyContent: "flex-end" },
   heading: { color: "#fff", fontSize: 22, fontWeight: "800", textAlign: "center", marginTop: 8 },
   sub: { color: theme.textSecondary, fontSize: 14, textAlign: "center", marginTop: 8 },
-  confirmWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  confirmWrap: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   bigAvatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: theme.surfaceElevated, borderWidth: 3, borderColor: theme.primary, alignItems: "center", justifyContent: "center", marginBottom: 24 },
   bigAvatarText: { color: "#fff", fontSize: 36, fontWeight: "800" },
   err: { color: theme.primary, marginTop: 12 },
@@ -179,6 +238,9 @@ const styles = StyleSheet.create({
   contactAvatarText: { color: "#fff", fontWeight: "700" },
   contactName: { color: "#fff", fontWeight: "600" },
   contactPhone: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
+  msgInput: { alignSelf: "stretch", backgroundColor: theme.surfaceElevated, borderRadius: 12, padding: 14, color: "#fff", borderWidth: 1, borderColor: theme.border, marginTop: 20 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.surface, flexShrink: 0 },
+  chipText: { color: "#fff", fontSize: 12 },
   invitedTag: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: theme.warn, backgroundColor: "rgba(255,149,0,0.08)" },
   invitedTagText: { color: theme.warn, fontSize: 11, fontWeight: "700" },
   toast: { position: "absolute", bottom: 32, left: 20, right: 20, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: theme.surfaceElevated, borderWidth: 1, borderColor: theme.success, borderRadius: 12, padding: 14 },
@@ -187,4 +249,9 @@ const styles = StyleSheet.create({
   successCircle: { width: 110, height: 110, borderRadius: 55, backgroundColor: theme.success, alignItems: "center", justifyContent: "center", marginBottom: 24 },
   successTitle: { color: "#fff", fontSize: 26, fontWeight: "800" },
   successSub: { color: theme.textSecondary, marginTop: 8, textAlign: "center", paddingHorizontal: 32 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12, justifyContent: "center" },
+  waitRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 24 },
+  waitText: { color: theme.textSecondary, fontSize: 13 },
+  doneBtn: { marginTop: 32, paddingVertical: 14, paddingHorizontal: 48, borderRadius: 12, backgroundColor: theme.surfaceElevated, borderWidth: 1, borderColor: theme.border },
+  doneBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

@@ -60,6 +60,24 @@ export default function Home() {
     })();
   }, [user]);
 
+  // Poll for ACKs of alerts THIS user sent
+  useEffect(() => {
+    if (!user) return;
+    let lastSeen: Record<string, string> = {};
+    const t = setInterval(async () => {
+      try {
+        const sent = await api.get<any[]>("/api/alerts?filter=sent");
+        for (const a of sent) {
+          if (a.status === "acknowledged" && a.responded_at && lastSeen[a.id] !== a.responded_at) {
+            lastSeen[a.id] = a.responded_at;
+            if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+        }
+      } catch {}
+    }, 8000);
+    return () => clearInterval(t);
+  }, [user]);
+
   // Poll for incoming alerts
   useEffect(() => {
     if (!user) return;

@@ -11,8 +11,6 @@ function initials(name: string) {
   return (name || "").split(" ").map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 }
 
-const ALARM_SOUND = require("../assets/images/icon.png"); // placeholder — replace with real .mp3 asset when added
-
 export default function IncomingAlert() {
   const params = useLocalSearchParams<{ alertId?: string }>();
   const router = useRouter();
@@ -85,6 +83,11 @@ export default function IncomingAlert() {
         <Ionicons name="flash" size={36} color="#fff" style={{ marginBottom: 16 }} />
         <View style={styles.avatar}><Text style={styles.avatarText}>{initials(alert.sender_name)}</Text></View>
         <Text style={styles.alertText}>⚡ {alert.sender_name} needs you urgently!</Text>
+        {alert.message && (
+          <View style={styles.msgBubble} testID="incoming-alert-message">
+            <Text style={styles.msgText}>“{alert.message}”</Text>
+          </View>
+        )}
         <Text style={styles.subText}>Emergency alert received</Text>
       </View>
 
@@ -108,6 +111,8 @@ const styles = StyleSheet.create({
   avatarText: { color: "#fff", fontSize: 48, fontWeight: "800" },
   alertText: { color: "#fff", fontSize: 24, fontWeight: "800", textAlign: "center" },
   subText: { color: "rgba(255,255,255,0.85)", fontSize: 14, marginTop: 12 },
+  msgBubble: { backgroundColor: "rgba(255,255,255,0.18)", paddingHorizontal: 18, paddingVertical: 12, borderRadius: 16, marginTop: 16, maxWidth: "85%" },
+  msgText: { color: "#fff", fontSize: 16, fontWeight: "600", textAlign: "center", lineHeight: 22 },
   actions: { padding: 24, gap: 12 },
   ackBtn: { flexDirection: "row", gap: 10, backgroundColor: theme.success, paddingVertical: 20, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   ackText: { color: "#fff", fontWeight: "800", fontSize: 17, letterSpacing: 0.5 },

@@ -77,6 +77,7 @@ export default function History() {
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={styles.rowName}>{item.direction === "incoming" ? item.sender_name : item.receiver_name}</Text>
+              {item.message ? <Text style={styles.rowMsg} numberOfLines={1}>{item.message}</Text> : null}
               <Text style={styles.rowTime}>{timeAgo(item.created_at)}</Text>
             </View>
             <View style={[styles.badge, { backgroundColor: statusColor(item.status) + "22", borderColor: statusColor(item.status) }]}>
@@ -101,6 +102,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", backgroundColor: theme.surface, borderRadius: 14, borderWidth: 1, borderColor: theme.border, padding: 14, marginBottom: 10 },
   dirIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   rowName: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  rowMsg: { color: theme.textSecondary, fontSize: 13, marginTop: 2, fontStyle: "italic" },
   rowTime: { color: theme.textSecondary, fontSize: 12, marginTop: 2 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1 },
   badgeText: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },

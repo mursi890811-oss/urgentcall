@@ -500,7 +500,7 @@ async def list_alerts(filter: str = "all", user: dict = Depends(get_current_user
         q = {"receiver_user_id": uid, "status": "missed"}
     else:
         q = {"$or": [{"sender_user_id": uid}, {"receiver_user_id": uid}]}
-    items = await db.alerts.find(q, {"_id": 0}).sort("created_at", -1).to_list(200)
+    items = await db.alerts.find(q, {"_id": 0}).sort([("created_at", -1)]).to_list(200)
     # add direction
     for it in items:
         it["direction"] = "outgoing" if it["sender_user_id"] == uid else "incoming"
@@ -539,6 +539,24 @@ async def respond_alert(alert_id: str, body: AlertRespondReq, user: dict = Depen
             },
         )
     return {"ok": True, "status": new_status}
+
+
+@api.get("/alerts/{alert_id}")
+async def get_alert(alert_id: str, user: dict = Depends(get_current_user)):
+    """Sender or receiver polls a specific alert to see its current status."""
+    alert = await db.alerts.find_one(
+        {
+            "id": alert_id,
+            "$or": [
+                {"sender_user_id": user["user_id"]},
+                {"receiver_user_id": user["user_id"]},
+            ],
+        },
+        {"_id": 0},
+    )
+    if not alert:
+        raise HTTPException(404, "Alert not found")
+    return alert
 
 
 # ============ PUSH ============
