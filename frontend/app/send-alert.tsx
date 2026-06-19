@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Share, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -8,6 +8,10 @@ import { theme } from "@/src/theme";
 
 function initials(name: string) {
   return (name || "").split(" ").map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
+}
+
+function genRequestId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export default function SendAlert() {
@@ -22,6 +26,10 @@ export default function SendAlert() {
   const [customMsg, setCustomMsg] = useState("");
   const [sentAlertId, setSentAlertId] = useState<string | null>(null);
   const [alertStatus, setAlertStatus] = useState<string>("sent");
+  // One id per "session" of attempting to send this particular alert. Generated once
+  // when the user opens the confirm screen, reused across retries so a flaky connection
+  // that causes the client to resend never creates a duplicate alert server-side.
+  const requestIdRef = useRef(genRequestId());
 
   const QUICK_MSGS = ["Call me back", "Where are you?", "I need you now", "Emergency!"];
 
@@ -61,7 +69,11 @@ export default function SendAlert() {
     if (!selected) return;
     setLoading(true); setErr(null);
     try {
-      const created: any = await api.post("/api/alerts", { receiver_user_id: selected.contact_user_id, message: customMsg.trim() || undefined });
+      const created: any = await api.post("/api/alerts", {
+        receiver_user_id: selected.contact_user_id,
+        message: customMsg.trim() || undefined,
+        client_request_id: requestIdRef.current,
+      });
       setSentAlertId(created?.id || null);
       setAlertStatus(created?.status || "sent");
       setSent(true);

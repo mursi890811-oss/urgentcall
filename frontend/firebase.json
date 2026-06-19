@@ -1,0 +1,8 @@
+{
+  "react-native": {
+    "messaging_android_notification_channel_id": "urgentcall-alarm",
+    "messaging_android_notification_color": "@color/notification_icon_color",
+    "messaging_android_headless_task_timeout": 30000,
+    "messaging_android_notification_delegation_enabled": false
+  }
+}

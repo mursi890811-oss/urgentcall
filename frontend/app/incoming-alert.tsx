@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useAudioPlayer } from "expo-audio";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { api } from "@/src/api/client";
 import { theme } from "@/src/theme";
 
@@ -12,26 +13,41 @@ function initials(name: string) {
 }
 
 export default function IncomingAlert() {
-  const params = useLocalSearchParams<{ alertId?: string }>();
+  const params = useLocalSearchParams<{ alertId?: string; senderName?: string; message?: string }>();
   const router = useRouter();
   const [alert, setAlertData] = useState<any | null>(null);
   const pulse = useRef(new Animated.Value(0)).current;
   const timer = useRef<any>(null);
   const hapticInterval = useRef<any>(null);
+  const stoppedRef = useRef(false);
 
-  // Alarm: use a remote/looped beep; fallback to vibration only if audio fails
-  const player = useAudioPlayer(
-    { uri: "https://cdn.pixabay.com/audio/2022/03/15/audio_1d4f4d77b6.mp3" }
-  );
+  // Bundled local alarm sound - NOT a remote URL. A remote URL means the alarm could
+  // fail to play on a slow/flaky connection at the exact moment it matters most.
+  // Place a real alarm/siren audio file at assets/sounds/alarm.mp3 (see README note).
+  const player = useAudioPlayer(require("@/assets/sounds/alarm.mp3"));
 
   function stopAll() {
+    if (stoppedRef.current) return;
+    stoppedRef.current = true;
     try { Vibration.cancel(); } catch {}
     if (hapticInterval.current) { clearInterval(hapticInterval.current); hapticInterval.current = null; }
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     try { player.pause(); } catch {}
+    try { deactivateKeepAwake("urgentcall-alarm"); } catch {}
   }
 
+  // Alert data can arrive two ways: (1) navigated to directly from the FCM foreground
+  // listener with sender/message already in params, or (2) opened from a tray notification
+  // with only an alertId, in which case we fetch full details from /alerts/pending.
   useEffect(() => {
+    if (params.senderName) {
+      setAlertData({
+        id: params.alertId,
+        sender_name: params.senderName,
+        message: params.message,
+      });
+      return;
+    }
     (async () => {
       try {
         const list = await api.get<any[]>("/api/alerts/pending");
@@ -40,7 +56,7 @@ export default function IncomingAlert() {
         else router.back();
       } catch { router.back(); }
     })();
-  }, [params.alertId, router]);
+  }, [params.alertId, params.senderName, params.message, router]);
 
   useEffect(() => {
     Animated.loop(
@@ -51,6 +67,8 @@ export default function IncomingAlert() {
     ).start();
 
     if (Platform.OS !== "web") {
+      // Keep the screen on so the alarm UI doesn't go dark/lock mid-ring.
+      activateKeepAwakeAsync("urgentcall-alarm").catch(() => {});
       Vibration.vibrate([0, 500, 300, 500, 300, 500], true);
       hapticInterval.current = setInterval(() => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -66,11 +84,17 @@ export default function IncomingAlert() {
 
   async function respond(action: "acknowledge" | "dismiss", auto = false) {
     if (!alert) return;
+    // Stop the alarm immediately, before the network call - the person should never have
+    // to wait on a slow request just to silence their phone.
     stopAll();
+    router.back();
     try {
       await api.post(`/api/alerts/${alert.id}/respond`, { action: auto ? "dismiss" : action });
-    } catch {}
-    router.back();
+    } catch {
+      // Best-effort retry once in the background; the alarm is already stopped locally
+      // regardless, since that's the user-facing promise that matters most.
+      try { await api.post(`/api/alerts/${alert.id}/respond`, { action: auto ? "dismiss" : action }); } catch {}
+    }
   }
 
   const bg = pulse.interpolate({ inputRange: [0, 1], outputRange: ["#8B0000", "#FF3B30"] });

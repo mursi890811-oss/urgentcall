@@ -6,16 +6,23 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
+import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
 import { useAuth } from "@/src/context/AuthContext";
 import { theme } from "@/src/theme";
 
 type Tab = "signin" | "signup";
 
+// Configure once at module load. Replace with your real Web Client ID from
+// Google Cloud Console -> APIs & Services -> Credentials (OAuth client of type "Web application",
+// NOT the Android client - the Android client is matched automatically via SHA-1 + package name).
+GoogleSignin.configure({
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  offlineAccess: false,
+});
+
 export default function LoginScreen() {
   const router = useRouter();
-  const { signIn, signUp, signInWithGoogleSession } = useAuth();
+  const { signIn, signUp, signInWithGoogleIdToken } = useAuth();
   const [tab, setTab] = useState<Tab>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,41 +54,27 @@ export default function LoginScreen() {
   async function handleGoogle() {
     setErr(null); setLoading(true);
     try {
-      const redirectUrl = Platform.OS === "web"
-        ? (typeof window !== "undefined" ? window.location.origin + "/login" : "")
-        : Linking.createURL("login");
-      const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-
       if (Platform.OS === "web") {
-        // Web: redirect; after return parse session_id
-        if (typeof window !== "undefined") {
-          // Check if already returning with session_id
-          const url = new URL(window.location.href);
-          const sid = url.hash.includes("session_id=")
-            ? new URLSearchParams(url.hash.slice(1)).get("session_id")
-            : url.searchParams.get("session_id");
-          if (sid) {
-            await signInWithGoogleSession(sid);
-            window.history.replaceState(null, "", url.pathname);
-            router.replace("/(tabs)/home");
-            return;
-          }
-          window.location.href = authUrl;
-        }
+        setErr("Google sign-in on web is not set up yet - use email & password.");
         return;
       }
-
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-      if (result.type !== "success" || !result.url) { setLoading(false); return; }
-      const parsed = new URL(result.url);
-      const sid = parsed.hash.includes("session_id=")
-        ? new URLSearchParams(parsed.hash.slice(1)).get("session_id")
-        : parsed.searchParams.get("session_id");
-      if (!sid) throw new Error("No session id returned");
-      await signInWithGoogleSession(sid);
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      // signIn() resolves even on user cancellation in newer versions; check the type field.
+      if (response.type !== "success") { setLoading(false); return; }
+      const idToken = response.data?.idToken;
+      if (!idToken) throw new Error("No ID token returned from Google");
+      await signInWithGoogleIdToken(idToken);
       router.replace("/(tabs)/home");
-    } catch (e: any) { setErr(e.message || "Google sign-in failed"); }
-    finally { setLoading(false); }
+    } catch (e: any) {
+      if (e?.code === statusCodes.SIGN_IN_CANCELLED) {
+        // user closed the picker - not an error worth showing
+      } else if (e?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        setErr("Google Play Services not available on this device");
+      } else {
+        setErr(e.message || "Google sign-in failed");
+      }
+    } finally { setLoading(false); }
   }
 
   return (

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { Platform } from "react-native";
 import { storage } from "@/src/utils/storage";
 import { api, setAuthToken } from "@/src/api/client";
+import { requestPushPermissionAndRegister } from "@/src/notifications/push";
 
 export type AppUser = {
   user_id: string;
@@ -19,7 +20,7 @@ type AuthCtx = {
   token: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (full_name: string, phone: string, email: string, password: string) => Promise<void>;
-  signInWithGoogleSession: (sessionToken: string) => Promise<void>;
+  signInWithGoogleIdToken: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -62,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await api.get<AppUser>("/api/auth/me");
         setUser(me);
         setToken(stored);
+        // Re-register on launch too: the FCM token can rotate independent of login state.
+        requestPushPermissionAndRegister().catch(() => {});
       }
     } catch (e) {
       await clearToken();
@@ -82,6 +85,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(resp.access_token);
     setToken(resp.access_token);
     setUser(resp.user);
+    // Non-blocking: an alert account should work even if push registration fails
+    // (e.g. no Play Services on this device, or permission denied).
+    requestPushPermissionAndRegister().catch(() => {});
   }
 
   async function signIn(email: string, password: string) {
@@ -100,10 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await applyAuth(resp);
   }
 
-  async function signInWithGoogleSession(sessionToken: string) {
+  async function signInWithGoogleIdToken(idToken: string) {
     const resp = await api.post<{ access_token: string; user: AppUser }>(
       "/api/auth/google",
-      { session_token: sessionToken }
+      { id_token: idToken }
     );
     await applyAuth(resp);
   }
@@ -124,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ user, token, loading, signIn, signUp, signInWithGoogleSession, signOut, refresh }}>
+    <Ctx.Provider value={{ user, token, loading, signIn, signUp, signInWithGoogleIdToken, signOut, refresh }}>
       {children}
     </Ctx.Provider>
   );

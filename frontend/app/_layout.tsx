@@ -9,8 +9,18 @@ import * as Linking from "expo-linking";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider } from "@/src/context/AuthContext";
+import {
+  setupAndroidAlarmChannel,
+  subscribeForegroundFcm,
+  watchTokenRefresh,
+} from "@/src/notifications/push";
 
 SplashScreen.preventAutoHideAsync();
+
+// NOTE: registerBackgroundHandler() is intentionally NOT called here. It already runs
+// in index.js (the actual app entry point, loaded before this file) since Android only
+// reliably invokes the FCM background handler if it's registered at the very top of the
+// bundle - by the time this module evaluates, that registration must already be done.
 
 // Foreground notification handler (module scope)
 if (Platform.OS !== "web") {
@@ -25,7 +35,7 @@ if (Platform.OS !== "web") {
   });
 }
 
-// Android channel (module scope)
+// Android channel (module scope) — kept for non-alarm notifications.
 if (Platform.OS === "android") {
   Notifications.setNotificationChannelAsync("default", {
     name: "UrgentCall Alerts",
@@ -35,6 +45,7 @@ if (Platform.OS === "android") {
     lightColor: "#FF3B30",
     bypassDnd: true,
   });
+  setupAndroidAlarmChannel();
 }
 
 export default function RootLayout() {
@@ -45,11 +56,28 @@ export default function RootLayout() {
     if (loaded || error) SplashScreen.hideAsync();
   }, [loaded, error]);
 
+  // FCM foreground listener: when an incoming_alert arrives while the app is open,
+  // jump straight to the alarm screen instead of waiting for a tap on a tray notification.
+  useEffect(() => {
+    const unsubscribe = subscribeForegroundFcm((data) => {
+      router.push({ pathname: "/incoming-alert", params: { alertId: data.alert_id, senderName: data.sender_name, message: data.message } });
+    });
+    const tokenUnsub = watchTokenRefresh();
+    return () => {
+      unsubscribe();
+      tokenUnsub();
+    };
+  }, [router]);
+
   useEffect(() => {
     if (Platform.OS === "web") return;
 
     const tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data: any = response.notification.request.content.data || {};
+      if (data.alert_id) {
+        router.push({ pathname: "/incoming-alert", params: { alertId: data.alert_id } });
+        return;
+      }
       const url = data.deeplink || data.action_url;
       if (!url) return;
       if (typeof url === "string" && url.startsWith("http")) Linking.openURL(url);
@@ -59,6 +87,10 @@ export default function RootLayout() {
     Notifications.getLastNotificationResponseAsync().then((response) => {
       if (!response) return;
       const data: any = response.notification.request.content.data || {};
+      if (data.alert_id) {
+        router.push({ pathname: "/incoming-alert", params: { alertId: data.alert_id } });
+        return;
+      }
       const url = data.deeplink || data.action_url;
       if (url) {
         if (typeof url === "string" && url.startsWith("http")) Linking.openURL(url);

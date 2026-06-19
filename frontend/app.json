@@ -47,7 +47,12 @@
         "READ_CONTACTS",
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "USE_FULL_SCREEN_INTENT",
+        "WAKE_LOCK",
+        "DISABLE_KEYGUARD",
+        "FOREGROUND_SERVICE",
+        "SYSTEM_ALERT_WINDOW"
       ]
     },
     "web": {
@@ -57,11 +62,30 @@
     },
     "plugins": [
       "expo-router",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FF3B30",
+          "defaultChannel": "urgentcall-alarm",
+          "enableBackgroundRemoteNotifications": false
+        }
+      ],
+      "@react-native-firebase/app",
+      "@react-native-firebase/messaging",
+      "./plugins/withFcmManifestFix",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "useLegacyPackaging": false
+          }
+        }
+      ],
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#000"
