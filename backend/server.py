@@ -1,5 +1,6 @@
 """UrgentCall backend - FastAPI + MongoDB."""
 import os
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -7,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, List
 
-import httpx
 import jwt
 from dotenv import load_dotenv
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, status
@@ -15,6 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+
+import firebase_admin
+from firebase_admin import credentials, messaging
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -24,9 +30,13 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET_KEY"]
 JWT_ALG = os.environ.get("JWT_ALGORITHM", "HS256")
 JWT_EXPIRES_DAYS = int(os.environ.get("JWT_EXPIRES_DAYS", "30"))
-EMERGENT_PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
-EMERGENT_PUSH_BASE = "https://integrations.emergentagent.com"
-EMERGENT_AUTH_BASE = "https://demobackend.emergentagent.com"
+
+# Firebase Admin SDK init (FCM push). Credentials come from either:
+#  - FIREBASE_SERVICE_ACCOUNT_PATH: path to the downloaded service account json
+#  - FIREBASE_SERVICE_ACCOUNT_JSON: the json contents directly (useful for some hosts)
+GOOGLE_OAUTH_CLIENT_IDS = [
+    c.strip() for c in os.environ.get("GOOGLE_OAUTH_CLIENT_IDS", "").split(",") if c.strip()
+]
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -36,11 +46,29 @@ pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger("urgentcall")
 logging.basicConfig(level=logging.INFO)
 
-push_client = httpx.AsyncClient(
-    base_url=EMERGENT_PUSH_BASE,
-    headers={"X-Push-Key": EMERGENT_PUSH_KEY},
-    timeout=10.0,
-)
+_firebase_app = None
+
+
+def init_firebase():
+    global _firebase_app
+    if _firebase_app is not None:
+        return _firebase_app
+    sa_path = os.environ.get("FIREBASE_SERVICE_ACCOUNT_PATH")
+    sa_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    try:
+        if sa_path and Path(sa_path).exists():
+            cred = credentials.Certificate(sa_path)
+        elif sa_json:
+            cred = credentials.Certificate(json.loads(sa_json))
+        else:
+            logger.warning("No Firebase credentials configured - push notifications disabled.")
+            return None
+        _firebase_app = firebase_admin.initialize_app(cred)
+        logger.info("Firebase Admin SDK initialized.")
+        return _firebase_app
+    except Exception as e:
+        logger.error(f"Failed to init Firebase Admin SDK: {e}")
+        return None
 
 
 @asynccontextmanager
@@ -55,10 +83,11 @@ async def lifespan(app: FastAPI):
     await db.alerts.create_index("receiver_user_id")
     await db.alerts.create_index("sender_user_id")
     await db.alerts.create_index("created_at")
+    await db.alerts.create_index([("sender_user_id", 1), ("client_request_id", 1)])
     await db.push_tokens.create_index("user_id")
+    init_firebase()
     yield
     client.close()
-    await push_client.aclose()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -79,7 +108,7 @@ class LoginReq(BaseModel):
 
 
 class GoogleLoginReq(BaseModel):
-    session_token: str  # from Emergent OAuth
+    id_token: str  # Google Sign-In ID token from the client
 
 
 class TokenResp(BaseModel):
@@ -101,6 +130,7 @@ class ContactSearchReq(BaseModel):
 class AlertSendReq(BaseModel):
     receiver_user_id: str
     message: Optional[str] = None
+    client_request_id: Optional[str] = None  # idempotency key - see send_alert()
 
 
 class AlertRespondReq(BaseModel):
@@ -205,20 +235,68 @@ async def get_current_user(request: Request) -> dict:
     return user
 
 
+def _is_permanent_fcm_error(exc: Exception) -> bool:
+    """True for errors where retrying is pointless (token is permanently invalid)."""
+    msg = str(exc)
+    return (
+        isinstance(exc, messaging.UnregisteredError)
+        or "registration-token-not-registered" in msg
+        or "Requested entity was not found" in msg
+    )
+
+
+def _should_retry_fcm(exc: BaseException) -> bool:
+    """Retry transient FCM/network errors, but never retry a permanently dead token."""
+    if isinstance(exc, messaging.UnregisteredError):
+        return False
+    return isinstance(exc, Exception)
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    retry=retry_if_exception(_should_retry_fcm),
+    reraise=True,
+)
+async def _fcm_send(token: str, data: dict):
+    """Send one FCM data-only message. Retries transient/network failures; does not
+    retry a permanently unregistered token, since that will never succeed."""
+    message = messaging.Message(
+        data={k: str(v) for k, v in data.items()},
+        token=token,
+        android=messaging.AndroidConfig(
+            priority="high",  # wakes the device even if app is backgrounded/killed
+            ttl=60,  # seconds - emergency alerts are useless if delayed too long
+        ),
+    )
+    # messaging.send is sync; run it directly since calls are infrequent and fast.
+    return messaging.send(message)
+
+
 async def send_push(recipients: List[str], data: dict):
-    if not recipients:
+    """Send a high-priority FCM data message to all registered devices for each user_id.
+    Non-blocking: failures are logged but never raise back to the caller, since a push
+    failure should not prevent the alert itself from being recorded.
+    """
+    if not recipients or _firebase_app is None:
+        if _firebase_app is None and recipients:
+            logger.warning("Push skipped - Firebase not configured.")
         return
-    if "title" not in data or "message" not in data:
-        return
-    try:
-        resp = await push_client.post(
-            "/api/v1/push/trigger",
-            json={"recipients": recipients, "data": data},
-        )
-        if resp.status_code >= 400:
-            logger.warning(f"Push failed {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        logger.warning(f"Push exception (non-blocking): {e}")
+    tokens_cursor = db.push_tokens.find({"user_id": {"$in": recipients}}, {"_id": 0})
+    tokens = await tokens_cursor.to_list(500)
+    for t in tokens:
+        device_token = t.get("device_token")
+        if not device_token:
+            continue
+        try:
+            await _fcm_send(device_token, data)
+        except Exception as e:
+            # Token is dead (app uninstalled, etc.) - clean it up so we stop retrying it forever.
+            if _is_permanent_fcm_error(e):
+                await db.push_tokens.delete_one({"user_id": t["user_id"], "platform": t.get("platform")})
+                logger.info(f"Removed stale push token for user {t['user_id']}")
+            else:
+                logger.warning(f"FCM send failed after retries for user {t['user_id']}: {e}")
 
 
 # ============ AUTH ============
@@ -260,19 +338,23 @@ async def login(body: LoginReq):
 
 @api.post("/auth/google", response_model=TokenResp)
 async def google_login(body: GoogleLoginReq):
-    """Accepts session_id from Emergent OAuth flow, fetches user, creates/links account."""
-    async with httpx.AsyncClient(timeout=10.0) as c:
-        resp = await c.get(
-            f"{EMERGENT_AUTH_BASE}/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": body.session_token},
+    """Verifies a real Google Sign-In ID token (issued client-side) and creates/links the account."""
+    if not GOOGLE_OAUTH_CLIENT_IDS:
+        raise HTTPException(500, "Google sign-in is not configured on the server")
+    try:
+        # verify_oauth2_token checks signature, expiry, and issuer against Google's public keys.
+        idinfo = google_id_token.verify_oauth2_token(
+            body.id_token, google_requests.Request()
         )
-    if resp.status_code != 200:
-        raise HTTPException(401, "Invalid Google session")
-    data = resp.json()
-    email = data["email"].lower()
-    name = data.get("name", "")
-    picture = data.get("picture")
-    session_token = data["session_token"]
+    except Exception:
+        raise HTTPException(401, "Invalid Google token")
+
+    if idinfo.get("aud") not in GOOGLE_OAUTH_CLIENT_IDS:
+        raise HTTPException(401, "Token was not issued for this app")
+
+    email = idinfo["email"].lower()
+    name = idinfo.get("name", "")
+    picture = idinfo.get("picture")
 
     user = await db.users.find_one({"email": email})
     if not user:
@@ -297,8 +379,9 @@ async def google_login(body: GoogleLoginReq):
         user["full_name"] = name
         user["avatar_url"] = picture
 
-    await store_session(user["user_id"], session_token, "google")
-    return TokenResp(access_token=session_token, user=user_public(user))
+    token = make_token(user["user_id"])
+    await store_session(user["user_id"], token, "google")
+    return TokenResp(access_token=token, user=user_public(user))
 
 
 @api.get("/auth/me")
@@ -441,6 +524,18 @@ async def search_users(body: ContactSearchReq, user: dict = Depends(get_current_
 # ============ ALERTS ============
 @api.post("/alerts")
 async def send_alert(body: AlertSendReq, user: dict = Depends(get_current_user)):
+    # Idempotency: if the client already sent this exact request (e.g. its first attempt's
+    # response was lost to a flaky connection and the client retried), return the original
+    # alert instead of creating a second one. Without this, retry-on-network-failure logic
+    # in the client could double-send an emergency alert.
+    if body.client_request_id:
+        existing = await db.alerts.find_one(
+            {"sender_user_id": user["user_id"], "client_request_id": body.client_request_id},
+            {"_id": 0},
+        )
+        if existing:
+            return existing
+
     receiver = await db.users.find_one({"user_id": body.receiver_user_id}, {"_id": 0, "password_hash": 0})
     if not receiver:
         raise HTTPException(404, "Recipient not found")
@@ -468,6 +563,7 @@ async def send_alert(body: AlertSendReq, user: dict = Depends(get_current_user))
         "receiver_user_id": receiver["user_id"],
         "receiver_name": receiver.get("full_name", ""),
         "message": body.message or f"{user.get('full_name', 'Someone')} needs you urgently!",
+        "client_request_id": body.client_request_id,
         "status": "sent",
         "created_at": utcnow(),
         "responded_at": None,
@@ -476,13 +572,15 @@ async def send_alert(body: AlertSendReq, user: dict = Depends(get_current_user))
     await db.alerts.insert_one(alert)
     alert.pop("_id", None)
 
-    # Send push (non-blocking)
+    # Send push (non-blocking, retried internally, never raises)
     await send_push(
         recipients=[receiver["user_id"]],
         data={
-            "title": "🚨 URGENT ALERT",
-            "message": f"{user.get('full_name', 'Someone')} needs you urgently!",
-            "action_url": f"/incoming-alert?alertId={alert['id']}",
+            "type": "incoming_alert",
+            "alert_id": alert["id"],
+            "sender_name": user.get("full_name", "Someone"),
+            "message": alert["message"],
+            "created_at": alert["created_at"].isoformat(),
         },
     )
 
@@ -529,15 +627,16 @@ async def respond_alert(alert_id: str, body: AlertRespondReq, user: dict = Depen
         {"id": alert_id},
         {"$set": {"status": new_status, "responded_at": utcnow()}},
     )
-    # Notify sender
-    if body.action == "acknowledge":
-        await send_push(
-            recipients=[alert["sender_user_id"]],
-            data={
-                "title": "✅ Alert acknowledged",
-                "message": f"{user.get('full_name', 'They')} responded: I'm OK",
-            },
-        )
+    # Notify sender either way, so they always know the alarm stopped on the receiver's end.
+    await send_push(
+        recipients=[alert["sender_user_id"]],
+        data={
+            "type": "alert_response",
+            "alert_id": alert_id,
+            "status": new_status,
+            "responder_name": user.get("full_name", "They"),
+        },
+    )
     return {"ok": True, "status": new_status}
 
 
@@ -562,6 +661,7 @@ async def get_alert(alert_id: str, user: dict = Depends(get_current_user)):
 # ============ PUSH ============
 @api.post("/register-push", status_code=201)
 async def register_push(body: PushRegisterReq, user: dict = Depends(get_current_user)):
+    """Stores the device's FCM token so we can send it push notifications directly."""
     await db.push_tokens.update_one(
         {"user_id": user["user_id"], "platform": body.platform},
         {"$set": {
@@ -572,22 +672,6 @@ async def register_push(body: PushRegisterReq, user: dict = Depends(get_current_
         }},
         upsert=True,
     )
-    # Relay to Emergent push service
-    try:
-        resp = await push_client.post(
-            "/api/v1/push/users/register",
-            json={
-                "user_id": user["user_id"],
-                "platform": body.platform,
-                "device_token": body.device_token,
-            },
-        )
-        if resp.status_code == 401:
-            raise HTTPException(500, "EMERGENT_PUSH_KEY missing or invalid")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.warning(f"Push register relay failed: {e}")
     return {"status": "registered"}
 
 
